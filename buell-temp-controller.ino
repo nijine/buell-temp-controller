@@ -39,43 +39,70 @@ void setup() {
 
 void sendRTH() {
   Serial.write((char*) rtdHeader, 9);
-  delay(500); // gives the ECM time to start replying
+  delay(250); // gives the ECM time to start replying
 }
 
 void evalTemp() {
 //  unsigned eTemp = (rtdResponse[31] << 8 | rtdResponse[30]) * 0.18 - 40; // Fahrenheit value
   unsigned eTemp = (rtdResponse[31] << 8 | rtdResponse[30]) * 0.1 - 40; // Celsius value
   lcd.setCursor(0,0);
-  lcd.print("Temp: ");
+  lcd.print("T:");
+
+  if (eTemp < 100)
+    lcd.print(" "); // formatting hack
+
   lcd.print(eTemp);
-  lcd.print(" *C "); // extra space is a "clearing" hack for the LCD, in case our temp changes over to a lower order-of-magnitude
+}
+
+void evalO2() {
+  unsigned eO2 = (rtdResponse[35] << 8 | rtdResponse[34]) * 0.4888; // O2 voltage * 100 
+  lcd.setCursor(7,1);
+  lcd.print("O:");
+  lcd.print(eO2);
+}
+
+void evalFuel() {
+  unsigned eFuelFront = (rtdResponse[22] << 8 | rtdResponse[21]) * 0.0133; // Fuel Pulsewidth in ms * 10
+  unsigned eFuelRear = (rtdResponse[24] << 8 | rtdResponse[23]) * 0.0133; // Fuel Pulsewidth in ms * 10
+
+  lcd.setCursor(7,0);
+
+  if (eFuelFront < 100)
+    lcd.print(" ");
+
+  lcd.print(eFuelFront);
+
+  lcd.setCursor(11,0);
+
+  if (eFuelRear < 100)
+    lcd.print(" ");
+  
+  lcd.print(eFuelRear);
 }
 
 void evalVolts() {
   unsigned voltsRaw = (rtdResponse[29] << 8 | rtdResponse[28]); // volts * 100, i.e. 1250
-  int right = voltsRaw % 100;
-  int left = (voltsRaw - right) / 100;
   lcd.setCursor(0,1);
-  lcd.print("Batt: ");
+  lcd.print("B:");
 
-//  if (left < 10) // minor hack to keep the digits in the right place
-//    lcd.print(" "); // its omitted here because if our battery voltage was under 10v, we'd have bigger problems than formatting
-  lcd.print(left);
-  lcd.print(".");
+  if (voltsRaw < 1000) // minor hack to keep the digits in the right place
+    lcd.print(" ");
 
-  if (right < 10) // same as above, formatting hack for right-of-the-decimal
-    lcd.print("0");
-  lcd.print(right);
-  lcd.print(" V"); 
+  lcd.print(voltsRaw);
 }
 
 void setFan() {
   unsigned eTemp = (rtdResponse[31] << 8 | rtdResponse[30]) * 0.1 - 40; // Celsius value
 
-  if (eTemp > 180)
+  if (eTemp > 179) {
     analogWrite(FAN_PWM_PIN, 255); // 100% / fully on
-  else
+    lcd.setCursor(15, 1);
+    lcd.print("*");
+  } else {
     analogWrite(FAN_PWM_PIN, 0); // 0% / off
+    lcd.setCursor(15, 1);
+    lcd.print(" ");
+  }
 }
 
 void retryRequest() { // retry logic
@@ -105,8 +132,10 @@ void loop() { // run over and over
 
       evalTemp(); // print temp
       evalVolts(); // print battery voltage
+      evalO2(); // print O2 sensor voltage
+      evalFuel(); // print fuel pulsewidths
       setFan(); // turn fan on or off depending on temp
-      delay(4500); // no need to refresh this any faster
+      delay(250);
       sendRTH(); // send another runtime data request
     } else {
       retryRequest();
