@@ -1,5 +1,5 @@
 # buell-temp-controller
-C-based arudino program for controlling engine temp and displaying engine vitals on a 2000 Buell X1 Lightning ECM
+C-based arudino program for controlling engine temp and displaying engine vitals on a 2000 Buell X1 Lightning via the ECM Datalink port.
 
 ## Operational basics
 This arduino program is designed to use an arduino's built-in serial interface to communicate with a Buell motorcycle's ECM (or Engine Control Module, the "engine computer") and pull down runtime diagnostic information, as well as turn a pair of fans (that are pointed at the two engine cylinders) on and off depending on what the current engine temperature is.
