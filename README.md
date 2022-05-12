@@ -1,5 +1,5 @@
 # buell-temp-controller
-C-based arudino program for controlling engine temp on a 2000 Buell X1 Lightning ECM
+C-based arudino program for controlling engine temp and displaying engine vitals on a 2000 Buell X1 Lightning ECM
 
 ## Operational basics
 This arduino program is designed to use an arduino's built-in serial interface to communicate with a Buell motorcycle's ECM (or Engine Control Module, the "engine computer") and pull down runtime diagnostic information, as well as turn a pair of fans (that are pointed at the two engine cylinders) on and off depending on what the current engine temperature is.
@@ -34,6 +34,9 @@ When running, the output on the LCD looks roughly like so:
 I opted to leave out the Fuel Pulsewidth labels so that there was enough room to show meaningful output. The `*` in the bottom right corner means that the fan is turned on.
 
 There will be a flashing `X` in the bottom right corner if there is an error communicating with the ECM.
+
+## Implementation notes
+Use of the `delay()` function is discouraged for complex arduino applications, but the alternative `millis()` is a little more complicated to use, so I opted to keep the initial implementation of this code simple, especially because there's no reason to continue program operation outside of the existing delays (like for reading other arduino inputs, etc). Serial communication is recorded during delay cycles, so that's a non-issue.
 
 ## More information
 Lots of great details regarding Buell's DDFI ECMs can be found at https://ecmspy.com . This website played a large part in determining how to communicate with the ECM and making this program possible.
