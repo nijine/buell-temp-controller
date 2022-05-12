@@ -23,7 +23,7 @@ The only other notable bits are a PCF8574-based 16x2 LCD screen, which comes rea
 Note: I did have to increase the default size of the serial I/O buffer, otherwise the reply from the ECM gets cut off. There isn't an easy way to do this from application code, and I ran into issues attempting to pass `SERIAL_RX_BUFFER_SIZE` as a build-time override flag, so I simply modified the relevant HardwareSerial.h header file for my hardware in the arduino libraries.
 
 ## Sample output
-When running, the output on the LCD looks rough like so:
+When running, the output on the LCD looks roughly like so:
 ```
 *----------------*
 |T:185   43  41  |
