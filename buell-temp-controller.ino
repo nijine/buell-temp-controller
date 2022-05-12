@@ -34,12 +34,14 @@ void setup() {
 
   // Open serial communications and wait for port to open:
   Serial.begin(9600);
+
+  // Kick off ECM communication
   sendRTH();
 }
 
 void sendRTH() {
   Serial.write((char*) rtdHeader, 9);
-  delay(250); // gives the ECM time to start replying
+  delay(250); // gives the ECM time to write the reply
 }
 
 void evalTemp() {
@@ -81,14 +83,14 @@ void evalFuel() {
 }
 
 void evalVolts() {
-  unsigned voltsRaw = (rtdResponse[29] << 8 | rtdResponse[28]); // volts * 100, i.e. 1250
+  unsigned eVolts = (rtdResponse[29] << 8 | rtdResponse[28]); // volts * 100, i.e. 1250
   lcd.setCursor(0,1);
   lcd.print("B:");
 
-  if (voltsRaw < 1000) // minor hack to keep the digits in the right place
+  if (eVolts < 1000) // minor hack to keep the digits in the right place
     lcd.print(" ");
 
-  lcd.print(voltsRaw);
+  lcd.print(eVolts);
 }
 
 void setFan() {
@@ -123,7 +125,7 @@ void retryRequest() { // retry logic
   }
 }
 
-void loop() { // run over and over
+void loop() { // arduino runtime loop
   if (Serial.available()) {
     rtdResponse[bytePosition++] = Serial.read();
   } else {
@@ -135,7 +137,6 @@ void loop() { // run over and over
       evalO2(); // print O2 sensor voltage
       evalFuel(); // print fuel pulsewidths
       setFan(); // turn fan on or off depending on temp
-      delay(250);
       sendRTH(); // send another runtime data request
     } else {
       retryRequest();
