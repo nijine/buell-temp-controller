@@ -16,6 +16,8 @@ LiquidCrystal_PCF8574 lcd(0x27);
 int timedOutCounter = 0;
 int bytePosition = 0;
 int responseSize = 99; // response data size
+int logHeadSize = 9;
+int logEntSepSize = 4;
 
 byte logEntrySeparator[4];
 byte logHeader[9];
@@ -28,7 +30,11 @@ void setup() {
   logEntrySeparator[2]=0x00;
   logEntrySeparator[3]=0x00;
 
-  logHeader[0]="BUEKA";
+  logHeader[0]=0x42;
+  logHeader[1]=0x55;
+  logHeader[2]=0x45;
+  logHeader[3]=0x4B;
+  logHeader[4]=0x41;
   logHeader[5]=0x00;
   logHeader[6]=0x00;
   logHeader[7]=0x00;
@@ -62,8 +68,9 @@ void setup() {
     filename[3] = i/10 + '0';
     filename[4] = i%10 + '0';
     if (! SD.exists(filename)) {
-      logfile = SD.open(filename, FIlE_WRITE);
+      logfile = SD.open(filename, FILE_WRITE);
       break;
+    }
   }
 
   if (! logfile) {
@@ -74,12 +81,12 @@ void setup() {
 
   lcd.print("SD Init OK");
   lcd.setCursor(0, 1);
-  lcd.print("Log to: ");
+  lcd.print("Log @: ");
   lcd.print(filename);
   delay(3000);
 
   // Write the logfile header
-  logfile.print(logHeader);
+  logfile.write(logHeader, logHeadSize);
 
   // Open serial communications and wait for port to open:
   Serial.begin(9600);
@@ -171,9 +178,9 @@ void loop() { // arduino runtime loop
       bytePosition = 0; // reset to start
 
       // Write to the logfile
-      logfile.print(rtdResponse);
-      logfile.print(logEntrySeparator);
-      logfile.sync();
+      logfile.write(rtdResponse, responseSize);
+      logfile.write(logEntrySeparator, logEntSepSize);
+      logfile.flush();
 
       evalTemp(); // print temp
       evalVolts(); // print battery voltage
@@ -182,7 +189,7 @@ void loop() { // arduino runtime loop
       sendRTH(); // send another runtime data request
     } else {
       retryRequest();
-      logfile.sync(); // FOR TESTING, REMOVE
+      logfile.flush(); // Mostly for testing, not really necessary
     }
   }
 }
