@@ -1,7 +1,13 @@
 // Don't forget to make sure SERIAL_RX_BUFFER_SIZE is set to at least 128 in HardwareSerial.h for collecting buell runtime data!
 
-#define FAN_PWM_PIN 9
+// SD card
+#include <SPI.h>
+#include <SD.h>
 
+File logfile;
+const int chipSelect = 10;
+
+// LCD
 #include <LiquidCrystal_PCF8574.h>
 #include <Wire.h>
 
@@ -11,10 +17,23 @@ int timedOutCounter = 0;
 int bytePosition = 0;
 int responseSize = 99; // response data size
 
+byte logEntrySeparator[4];
+byte logHeader[9];
 byte rtdHeader[9];
 byte rtdResponse[99];
 
 void setup() {
+  logEntrySeparator[0]=0x00;
+  logEntrySeparator[1]=0x00;
+  logEntrySeparator[2]=0x00;
+  logEntrySeparator[3]=0x00;
+
+  logHeader[0]="BUEKA";
+  logHeader[5]=0x00;
+  logHeader[6]=0x00;
+  logHeader[7]=0x00;
+  logHeader[8]=0x01;
+
   rtdHeader[0]=0x01; //SOH
   rtdHeader[1]=0x00; //Emittend
   rtdHeader[2]=0x42; //Recipient
@@ -29,14 +48,47 @@ void setup() {
   lcd.setBacklight(255);
   lcd.clear();
 
-  // Turn off fan initially
-  analogWrite(FAN_PWM_PIN, 0);
+  // Init SD card / logfile
+  lcd.setCursor(0, 0);
+
+  if (! SD.begin(chipSelect)) {
+    lcd.print("SD Init FAIL");
+
+    return;
+  }
+
+  char filename[] = "LOG00.BIN";
+  for (uint8_t i = 0; i < 100; i++) {
+    filename[3] = i/10 + '0';
+    filename[4] = i%10 + '0';
+    if (! SD.exists(filename)) {
+      logfile = SD.open(filename, FIlE_WRITE);
+      break;
+  }
+
+  if (! logfile) {
+    lcd.print("Log open ERROR");
+
+    return;
+  }
+
+  lcd.print("SD Init OK");
+  lcd.setCursor(0, 1);
+  lcd.print("Log to: ");
+  lcd.print(filename);
+  delay(3000);
+
+  // Write the logfile header
+  logfile.print(logHeader);
 
   // Open serial communications and wait for port to open:
   Serial.begin(9600);
 
   // Kick off ECM communication
   sendRTH();
+
+  // Clear the display before outputting runtime data
+  lcd.clear();
 }
 
 void sendRTH() {
@@ -93,20 +145,6 @@ void evalVolts() {
   lcd.print(eVolts);
 }
 
-void setFan() {
-  unsigned eTemp = (rtdResponse[31] << 8 | rtdResponse[30]) * 0.1 - 40; // Celsius value
-
-  if (eTemp > 179) {
-    analogWrite(FAN_PWM_PIN, 255); // 100% / fully on
-    lcd.setCursor(15, 1);
-    lcd.print("*");
-  } else {
-    analogWrite(FAN_PWM_PIN, 0); // 0% / off
-    lcd.setCursor(15, 1);
-    lcd.print(" ");
-  }
-}
-
 void retryRequest() { // retry logic
   if (timedOutCounter < 3) {
     timedOutCounter++;
@@ -132,14 +170,19 @@ void loop() { // arduino runtime loop
     if (bytePosition == responseSize) {
       bytePosition = 0; // reset to start
 
+      // Write to the logfile
+      logfile.print(rtdResponse);
+      logfile.print(logEntrySeparator);
+      logfile.sync();
+
       evalTemp(); // print temp
       evalVolts(); // print battery voltage
       evalO2(); // print O2 sensor voltage
       evalFuel(); // print fuel pulsewidths
-      setFan(); // turn fan on or off depending on temp
       sendRTH(); // send another runtime data request
     } else {
       retryRequest();
+      logfile.sync(); // FOR TESTING, REMOVE
     }
   }
 }
