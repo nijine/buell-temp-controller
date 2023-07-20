@@ -1,6 +1,7 @@
 // Don't forget to make sure SERIAL_RX_BUFFER_SIZE is set to at least 128 in HardwareSerial.h for collecting buell runtime data!
+// Credit to Federico Dossena for the bulk of the PWM / timer setup code -> https://fdossena.com/?p=ArduinoFanControl/i.md
 
-#define FAN_PWM_PIN 9
+#define FAN_PWM_PIN 10
 
 #include <LiquidCrystal_PCF8574.h>
 #include <Wire.h>
@@ -13,6 +14,26 @@ int responseSize = 99; // response data size
 
 byte rtdHeader[9];
 byte rtdResponse[99];
+
+// Configure Timer 1 (pins 9 and 10) to output 25kHz PWM. This is necessary for most PC
+ // 4-pin fans to work correctly, since that's what the spec calls for.
+void setupTimer1(){
+    pinMode(FAN_PWM_PIN, OUTPUT);
+
+    // Set PWM frequency to about 25khz on pins 9 and 10
+    // (timer 1 mode 10, no prescale, count to 320)
+    TCCR1A = (1 << COM1A1) | (1 << COM1B1) | (1 << WGM11);
+    TCCR1B = (1 << CS10) | (1 << WGM13);
+    ICR1 = 320;
+    OCR1A = 0;
+    OCR1B = 0;
+}
+
+// Equivalent of analogWrite on pin 10
+void setPWM1B(float f){
+    f=f<0?0:f>1?1:f; // shorthand if block that binds f to 0 <= f <= 1
+    OCR1B = (uint16_t)(320*f);
+}
 
 void setup() {
   rtdHeader[0]=0x01; //SOH
@@ -29,8 +50,8 @@ void setup() {
   lcd.setBacklight(255);
   lcd.clear();
 
-  // Turn off fan initially
-  analogWrite(FAN_PWM_PIN, 0);
+  // PWM init
+  setupTimer1();
 
   // Open serial communications and wait for port to open:
   Serial.begin(9600);
@@ -46,46 +67,41 @@ void sendRTH() {
 
 void evalTemp() {
 //  unsigned eTemp = (rtdResponse[31] << 8 | rtdResponse[30]) * 0.18 - 40; // Fahrenheit value
-  unsigned eTemp = (rtdResponse[31] << 8 | rtdResponse[30]) * 0.1 - 40; // Celsius value
+
+  // Using int here since we can occasionally get negative values if there's a problem with
+   // the temp sensor, and we want that to display correctly.
+  int eTemp = (rtdResponse[31] << 8 | rtdResponse[30]) * 0.1 - 40; // Celsius value
   lcd.setCursor(0,0);
   lcd.print("T:");
 
-  if (eTemp < 100)
+  if (eTemp >= 0 && eTemp < 100)
     lcd.print(" "); // formatting hack
 
   lcd.print(eTemp);
 }
 
+void evalLoad() { // TPS
+  unsigned eLoad = rtdResponse[27]; // 1-byte value, engine load as percent * 2.55 (0-255)
+  lcd.setCursor(7,0);
+  lcd.print("L:");
+
+  if (eLoad < 100)
+    lcd.print(" "); // formatting hack
+
+  lcd.print(eLoad);
+}
+
 void evalO2() {
-  unsigned eO2 = (rtdResponse[35] << 8 | rtdResponse[34]) * 0.4888; // O2 voltage * 100 
+  unsigned eO2 = (rtdResponse[35] << 8 | rtdResponse[34]) * 0.4888; // O2 voltage * 100
   lcd.setCursor(7,1);
   lcd.print("O:");
   lcd.print(eO2);
 }
 
-void evalFuel() {
-  unsigned eFuelFront = (rtdResponse[22] << 8 | rtdResponse[21]) * 0.0133; // Fuel Pulsewidth in ms * 10
-  unsigned eFuelRear = (rtdResponse[24] << 8 | rtdResponse[23]) * 0.0133; // Fuel Pulsewidth in ms * 10
-
-  lcd.setCursor(7,0);
-
-  if (eFuelFront < 100)
-    lcd.print(" ");
-
-  lcd.print(eFuelFront);
-
-  lcd.setCursor(11,0);
-
-  if (eFuelRear < 100)
-    lcd.print(" ");
-  
-  lcd.print(eFuelRear);
-}
-
 void evalVolts() {
   unsigned eVolts = (rtdResponse[29] << 8 | rtdResponse[28]); // volts * 100, i.e. 1250
   lcd.setCursor(0,1);
-  lcd.print("B:");
+  lcd.print("V:");
 
   if (eVolts < 1000) // minor hack to keep the digits in the right place
     lcd.print(" ");
@@ -96,12 +112,47 @@ void evalVolts() {
 void setFan() {
   unsigned eTemp = (rtdResponse[31] << 8 | rtdResponse[30]) * 0.1 - 40; // Celsius value
 
-  if (eTemp > 179) {
-    analogWrite(FAN_PWM_PIN, 255); // 100% / fully on
+  // Yes, I know switch-case is a thing, I was too lazy to look up the syntax
+
+  // Fan curve, start at around 100C to prevent fuel from heating up excessively
+  if (eTemp > 99 && eTemp <= 120) {
+    setPWM1B(0.4f); // 40%
+    lcd.setCursor(15, 1);
+    lcd.print("*");
+  } else if (eTemp > 120 && eTemp <= 130) {
+    setPWM1B(0.47f);
+    lcd.setCursor(15, 1);
+    lcd.print("*");
+  } else if (eTemp > 130 && eTemp <= 140) {
+    setPWM1B(0.54f);
+    lcd.setCursor(15, 1);
+    lcd.print("*");
+  } else if (eTemp > 140 && eTemp <= 150) {
+    setPWM1B(0.61f);
+    lcd.setCursor(15, 1);
+    lcd.print("*");
+  } else if (eTemp > 150 && eTemp <= 160) { // Target operating temp
+    setPWM1B(0.68f);
+    lcd.setCursor(15, 1);
+    lcd.print("*");
+  } else if (eTemp > 160 && eTemp <= 170) {
+    setPWM1B(0.75f);
+    lcd.setCursor(15, 1);
+    lcd.print("*");
+  } else if (eTemp > 170 && eTemp <= 180) {
+    setPWM1B(0.82f);
+    lcd.setCursor(15, 1);
+    lcd.print("*");
+  } else if (eTemp > 180 && eTemp <= 190) {
+    setPWM1B(0.89f);
+    lcd.setCursor(15, 1);
+    lcd.print("*");
+  } else if (eTemp > 190) { // Upper limit
+    setPWM1B(1.0f);
     lcd.setCursor(15, 1);
     lcd.print("*");
   } else {
-    analogWrite(FAN_PWM_PIN, 0); // 0% / off
+    setPWM1B(0.0f); // 0% / off
     lcd.setCursor(15, 1);
     lcd.print(" ");
   }
@@ -133,9 +184,9 @@ void loop() { // arduino runtime loop
       bytePosition = 0; // reset to start
 
       evalTemp(); // print temp
+      evalLoad(); // print tps / load
       evalVolts(); // print battery voltage
       evalO2(); // print O2 sensor voltage
-      evalFuel(); // print fuel pulsewidths
       setFan(); // turn fan on or off depending on temp
       sendRTH(); // send another runtime data request
     } else {
